@@ -1,0 +1,9 @@
+.poorify/core/harness_state.db
+.poorify/backup/
+*.bak
+__pycache__/
+*.pyc
+.env
+*.pem
+*.key
+secrets.toml

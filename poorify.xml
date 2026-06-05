@@ -1,0 +1,110 @@
+<system_meta_blueprint>
+  <project_name>Harness-Scaffold: The Real Caveman Agentic Engine</project_name>
+  <version>2026.06.04</version>
+  <architecture_philosophy>
+    Strict O(1) Context Window management. State-driven execution via flat SQLite. 
+    Language-agnostic, Monorepo-aware, and bound by zero-trust sandboxed security.
+    No vector databases. No complex RAG. Raw code control.
+  </architecture_philosophy>
+</system_meta_blueprint>
+
+<instruction>
+  You are an expert Systems Architect specializing in Agentic Workflows. Your mission is to generate the complete, production-ready Python source code (`scaffold_core.py`) for the "Harness-Scaffold" core engine. 
+  You must meticulously implement every single technique and subsystem defined in the 22 Memos structural specs below. Do NOT emit mock code, shortcuts, placeholders, or abbreviated snippets. Write robust, fully realized implementation logic.
+</instruction>
+
+<detailed_memos_specification>
+
+  <phase id="1" name="STATE & MEMORY MANAGEMENT (Memos 1 - 4)">
+    <technique id="memo_1_2" name="Context Window Erasure Prevention">
+      - The system must treat the LLM context window as temporary and volatile.
+      - All permanent states, structural discoveries, and context tokens must be persisted into a flat SQLite database at `.harness/core/harness_state.db` immediately after any phase transitions.
+    </technique>
+    <technique id="memo_3" name="Dual-Tier Log Management (Short/Long-Term)">
+      - Table `execution_logs`: Track short-term code modifications.
+      - Table `long_term_milestones`: Track high-level structural updates.
+      - Component `Log Compressor`: Implement a routine that triggers when `execution_logs` reaches N rows (default 20). It feeds the short-term rows to an LLM, generates a 1-sentence summary milestone, writes it to `long_term_milestones`, and clears the compressed rows from `execution_logs`.
+    </technique>
+    <technique id="memo_4" name="Ephesian Memory Pruning">
+      - Implement a deterministic cleanup script (0 tokens) to scan `execution_logs` and delete rows that match temporary file rewrites, preserving only rows that directly impact the current `current_mission.md`.
+    </technique>
+  </phase>
+
+  <phase id="2" name="REQUIREMENTS ANALYSIS & ISOLATION (Memos 5 - 10)">
+    <technique id="memo_5_6" name="Strict Mode State Machine Matrix">
+      - Table `technical_specs`: Store requirements translated into strict technical bounds (`pre_conditions`, `post_conditions`, `strict_constraints`).
+      - Rules: LLM is strictly forbidden from parsing prose. It must parse text into structured JSON fields adhering exactly to this mathematical boundary state.
+    </technique>
+    <technique id="memo_7_8" name="Monorepo Spatial Isolation & Workspace Anchoring">
+      - Component `Workspace Anchor`: Given a target file path, a local Python script must traverse upwards to find the nearest root boundary file (`package.json`, `Cargo.toml`, `go.mod`, `requirements.txt`).
+      - Setting: Assign this folder path as `sub_project_path` in SQLite.
+      - Enforcement: Block any agent tool read/write operations that attempt to access files outside this path boundary.
+    </technique>
+    <technique id="memo_9_10" name="Deterministic Local Style Sampling">
+      - Before feeding code to the Agent Dev, a Python script uses localized regex/AST tokens to extract 3 adjacent files within the same `sub_project_path` to map indentation, casing, and error handling syntax.
+      - Injection: Inject these samples into a `<code_style_blueprint>` XML tag to enforce local formatting consistency without manual configuration.
+    </technique>
+  </phase>
+
+  <phase id="3" name="INGESTION & JIT EXPLORATION (Memos 11 - 14)">
+    <technique id="memo_11_12" name="Just-In-Time (JIT) Dynamic Discovery">
+      - Reject global codebase reverse-engineering or indexing. Keep the repository thraw.
+      - For targeted queries, use a local `ripgrep`/grep wrapper (0 tokens) to locate files by technical keywords, minimizing context injection to a per-task basis.
+    </technique>
+    <technique id="memo_13_14" name="Static Complexity Routing & Extraction">
+      - Table `migration_router`: Maps complexity profiles per file.
+      - Component `Complexity Router`: Calculate Cyclomatic Complexity by counting conditional branching primitives (`if`, `else`, `loop`, `switch`, `case`, `while`, `for`) natively in Python.
+      - Logic:
+        * If complexity >= 5 (Core Logic file): Set `ingestion_mode='FULL'`. Load the complete source code including function bodies.
+        * If complexity < 5 (Boilerplate/Config file): Set `ingestion_mode='SKELETON'`. Regex/AST strip all function/method bodies, returning only function declarations, API signatures, and docstrings.
+    </technique>
+  </phase>
+
+  <phase id="4" name="IMPLEMENTATION & PATTERNING (Memos 17 - 22)">
+    <technique id="memo_17_18" name="Hybrid Requirement & Assertion Injection">
+      - Component `Payload Builder`: Before calling the Agent Dev, query SQLite to retrieve BOTH `technical_specs` and `business_assertions` data mapped to the `target_file`.
+      - Prompt Wrapping: Format the precise input mock JSON and expected output directly into the `<required_business_test_cases>` block so the developer agent knows the exact entry/exit conditions before writing code.
+    </technique>
+    <technique id="memo_19" name="Surgical Search/Replace Patching Engine">
+      - Enforce a strict output format using unified diff format blocks:
+        <<<<<<< SEARCH
+        [Exact old code snippet]
+        =======
+        [New modified code snippet]
+        >>>>>>> REPLACE
+      - Guardrails: Implement a verification engine that rejects the update if:
+        1. The SEARCH block string fails to achieve a 100% literal match within the source file.
+        2. The resulting Git Diff line delta exceeds 100 lines (triggers an automatic unsolicited refactoring block).
+    </technique>
+    <technique id="memo_20" name="Self-Healing Loop & Physical Transaction Rollback">
+      - Logic: If compiler execution fails, isolate the error from `stderr` and pass it back into a `<previous_attempt_failed>` loop. Limit loop to `MAX_RETRIES = 3`.
+      - Backup System: Write an automated `.bak` copy of the target file before any patching sequence. If `MAX_RETRIES` is exhausted without a successful zero-exit compile state, execute a hardware rollback, restoring the `.bak` file and interrupting execution to prompt a Human-In-The-Loop.
+    </technique>
+    <technique id="memo_21" name="Diagnostics-Driven Compiler Cascade Repair">
+      - Table `cascade_tasks`: Manages domino dependencies.
+      - Logic: After a local patch, invoke a global workspace build command inside the environment sandbox.
+      - Capture: If compilation fails in separate projects within the monorepo due to the change, parse the stdout/stderr, isolate the file names and error lines, and append them into `cascade_tasks` as `PENDING`. Process these down-stream tasks iteratively using the development loop until the entire monorepo compiles clean.
+    </technique>
+    <technique id="memo_22" name="Zero-Trust Sandboxed Execution Security">
+      - Logic: All compilation, execution, and lint checks must be delegated to an isolated runtime via Python subprocess invoking:
+        `docker run --rm -v $(pwd):/workspace -w /workspace --network none <image_id> <command>`
+      - Guardrail: Hardcode an immutable path blacklist inside the file reading mechanism to block access to files matching `.env`, `.pem`, `.key`, `id_rsa`, or `secrets.toml`.
+    </technique>
+  </phase>
+
+  <phase id="5" name="TESTING & GATEKEEPING (Memo 23)">
+    <technique id="memo_23" name="Three-Tier Token-Efficient Automated Testing Gate">
+      - Establish a strict cascading gate before committing code:
+        * Tier 1: Local Test Ingestion (0 tokens) -> Parse `business_assertions` from SQLite, inject data into the isolated Docker workspace, and check output equality natively via Python.
+        * Tier 2: Delta Logic Evaluation (~200 tokens) -> Pass ONLY the target file's raw `git diff` and the initial requirements block to the LLM to verify logical correctness. Force strict output constraint: `[PASSED]` or `[FAILED + Reason]`.
+        * Tier 3: Human-In-The-Loop CLI Playground -> Output a clear evaluation grid to the engineer's terminal, halting execution for explicit manual input override ([Y] to commit, [N] to reject, [M] for manual workspace testing).
+    </technique>
+  </phase>
+
+</detailed_memos_specification>
+
+<output_requirement>
+  Provide a single, unified, comprehensive Python script titled `scaffold_core.py`. 
+  It must contain the database initializer, helper utilities, AST/Regex parser logic for complexity routing, patch applications, subprocess Docker wrappers, loop constructs for cascade tracking, and the CLI execution pipeline.
+  Make it modular, highly structured, and production-ready.
+</output_requirement>

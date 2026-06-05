@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "poorify"
+version = "0.1.0"
+description = "Caveman Harness Scaffold — Anti-RAG, Flat-SQLite, JIT Surgical Discovery Engine"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[project.scripts]
+poorify = "poorify.main:main"
