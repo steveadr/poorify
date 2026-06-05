@@ -4,9 +4,54 @@
 
 Poorify is a deterministic scaffold engine for AI coding agents. It replaces vector databases and complex RAG with a flat SQLite database, a 4-phase surgical pipeline, and strict token-budget discipline.
 
-When loaded into a coding agent (Claude CLI, Copilot, OpenCode, etc.), Poorify gives the agent three commands that control how it modifies code.
+When loaded into a coding agent (Claude CLI, Copilot, OpenCode, etc.) via MCP, Poorify gives the agent tools that control how it modifies code.
 
-```text
+## MCP Setup
+
+Add to your OpenCode config (`.opencode/opencode.json` or equivalent):
+
+```json
+{
+  "mcpServers": {
+    "poorify": {
+      "command": "python",
+      "args": ["-m", "poorify.mcp_server"]
+    }
+  }
+}
+```
+
+### One-shot auto-setup prompt
+
+Copy-paste this to your AI agent (Claude CLI / Copilot / OpenCode) to wire Poorify automatically:
+
+> I want to use the Poorify harness system in this project. It exposes an MCP server at `python -m poorify.mcp_server`. Please detect which AI client I'm running (OpenCode, Claude CLI, or Copilot), find the correct MCP config file, and add the `poorify` server entry. The config format is:
+> ```json
+> {"mcpServers": {"poorify": {"command": "python", "args": ["-m", "poorify.mcp_server"]}}}
+> ```
+> After adding it, read `AGENTS.md` and give me a summary of the available commands.
+
+Once connected, Poorify registers:
+- **Tools** — `init`, `requirements`, `ingestion`, `develop`, `gate`, `inspect`, `metrics`
+- **Resources** — `poorify://agents/` (phase prompt templates), `poorify://summary` (latest metrics)
+- **Prompts** — `requirements_prompt`, `development_prompt`, `gate_prompt`
+
+## Quick Start
+
+Talk to your coding agent. Say:
+
+```
+/init
+/execute "Add VIP 15% discount to the banner"
+/inspect trading
+/metrics
+```
+
+The agent discovers Poorify's MCP tools at connection time and runs the pipeline automatically.
+
+## Pipeline
+
+```
 [User Request] ──► 1. Requirements ──► (Gen Spec, Mock JSON → SQLite)
                               │
                               ▼
@@ -19,32 +64,14 @@ When loaded into a coding agent (Claude CLI, Copilot, OpenCode, etc.), Poorify g
                4. Testing Gate ──► (Assertions + Diff + Human [Y/N/M])
 ```
 
----
-
-## Quick Start
-
-Talk to your coding agent. Say:
-
-```
-/init
-/execute "Add VIP 15% discount to the banner"
-/metrics
-```
-
-The agent reads `AGENTS.md`, loads the protocol from `commands/`, and runs the pipeline automatically.
-
----
-
 ## How It Works
 
 | You say | Agent does |
 |---------|-----------|
-| `/init` | Calls `poorify --init` to create `.poorify/core/harness_state.db` |
-| `/execute <task>` | Identifies target file → loads `requirements_agent.md` → produces XML spec → calls `poorify --phase requirements` → loads `development_agent.md` → writes Search/Replace patch → calls `poorify --phase develop` with self-heal ≤3 retries → loads `testing_agent.md` → reviews diff → calls `poorify --phase gate` for human Y/N/M → calls `poorify --metrics` |
-| `/metrics` | Calls `poorify --metrics` to show latest pipeline stats |
-| `/inspect <module>` | Calls `poorify --inspect "<module>"` to query architecture state for that module |
-
----
+| `/init` | Calls `init()` tool → creates `.poorify/core/harness_state.db` |
+| `/execute <task>` | Reads prompt from `poorify://agents/requirements_agent.md` → produces XML spec → calls `requirements()` tool → reads `poorify://agents/development_agent.md` → writes Search/Replace patches → calls `develop()` tool (self-heal ≤3) → reads `testing_agent.md` → calls `gate()` tool for human Y/N/M → calls `metrics()` |
+| `/metrics` | Calls `metrics()` tool → shows latest pipeline stats |
+| `/inspect <module>` | Calls `inspect("module")` tool → returns on-disk files + DB state |
 
 ## Architecture Flow (Memo 1 → 24)
 
@@ -86,9 +113,62 @@ The agent reads `AGENTS.md`, loads the protocol from `commands/`, and runs the p
 | 23 | Testing gate — git diff analysis + business assertion checks + human [Y/N/M] prompt | `gate.py` |
 | 24 | Token metrics — per-phase input/output/cached/ctx/duration/savings dashboard | `metrics.py` |
 
----
+## Metrics & Statistics
 
-## CLI Reference
+Each pipeline run is logged to `token_metrics`. View results via the `metrics()` tool or:
+
+```
+──────────────────────────────────────────────────────────────────────────────
+  Pipeline: P20260604-191500-a1b2c3
+──────────────────────────────────────────────────────────────────────────────
+  Phase              Input   Output   Cached    Ctx%   Dur(ms)   Retry    Saved
+  ---------------------------------------------------------------------------
+  requirements        300       80        0    3.8%      1200        0        0
+  ingestion             0        0        0    0.0%       300        0     2400
+  development         1200      420      180   15.0%      8400        2        0
+  gate                180       90        0    2.2%       400        0        0
+  ---------------------------------------------------------------------------
+  TOTAL              1680      590      180   15.0%     10300                 2400
+──────────────────────────────────────────────────────────────────────────────
+```
+
+## Project Structure
+
+```
+.poorify/
+├── core/                SQLite database (harness_state.db)
+├── agents/              Prompt modules for each pipeline phase
+│   ├── requirements_agent.md
+│   ├── development_agent.md
+│   └── testing_agent.md
+└── backup/              Automatic .bak rollback files
+
+src/poorify/
+├── mcp_server.py        MCP server (tools, resources, prompts)
+├── main.py              CLI entry point (debugging only)
+├── db.py                SQLite CRUD (7 tables)
+├── router.py            Complexity analysis + SKELETON/FULL routing
+├── engine.py            Pipeline orchestration + self-healing loop
+├── gate.py              Testing gate + human [Y/N/M] prompt
+├── metrics.py           Token metrics dashboard
+└── utils.py             Search/Replace patching, git diff, backup, grep
+
+.agignore                Git ignore patterns
+AGENTS.md                Agent behavioral spec
+commands/                Legacy protocol files (kept as reference)
+```
+
+## CLI Reference (Debugging Only)
+
+For manual testing:
+
+```bash
+python -m src.poorify.main --init
+python -m src.poorify.main --inspect "keyword"
+python -m src.poorify.main --metrics latest
+python -m src.poorify.main --metrics-all
+python -m src.poorify --help
+```
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -106,72 +186,6 @@ The agent reads `AGENTS.md`, loads the protocol from `commands/`, and runs the p
 | `--pipeline-id` | auto | Explicit pipeline ID (auto-generated if omitted) |
 | `--metrics` | `latest` | Show metrics for a pipeline ID |
 | `--metrics-all` | — | Show aggregate statistics across all pipelines |
-
----
-
-## Metrics & Statistics
-
-Each pipeline run is logged to `token_metrics`. View results anytime:
-
-```bash
-# Latest pipeline run
-poorify --metrics
-```
-
-```
-──────────────────────────────────────────────────────────────────────────────
-  Pipeline: P20260604-191500-a1b2c3
-──────────────────────────────────────────────────────────────────────────────
-  Phase              Input   Output   Cached    Ctx%   Dur(ms)   Retry    Saved
-  ---------------------------------------------------------------------------
-  requirements        300       80        0    3.8%      1200        0        0
-  ingestion             0        0        0    0.0%       300        0     2400
-  development         1200      420      180   15.0%      8400        2        0
-  gate                180       90        0    2.2%       400        0        0
-  ---------------------------------------------------------------------------
-  TOTAL              1680      590      180   15.0%     10300                 2400
-──────────────────────────────────────────────────────────────────────────────
-```
-
-```bash
-# Specific pipeline or aggregate
-poorify --metrics <pipeline_id>
-poorify --metrics-all
-```
-
----
-
-## Project Structure
-
-```
-commands/                Agent protocol files (loaded by AGENTS.md)
-├── init.md              Protocol for /init
-├── execute.md           Protocol for /execute <task>
-├── metrics.md           Protocol for /metrics
-└── inspect.md           Protocol for /inspect <module>
-
-.poorify/
-├── core/                SQLite database (harness_state.db)
-├── agents/              Prompt modules for each pipeline phase
-│   ├── requirements_agent.md
-│   ├── development_agent.md
-│   └── testing_agent.md
-└── backup/              Automatic .bak rollback files
-
-src/poorify/
-├── main.py              CLI entry point
-├── db.py                SQLite CRUD (7 tables)
-├── router.py            Complexity analysis + SKELETON/FULL routing
-├── engine.py            Pipeline orchestration + self-healing loop
-├── gate.py              Testing gate + human [Y/N/M] prompt
-├── metrics.py           Token metrics dashboard
-└── utils.py             Search/Replace patching, git diff, backup, grep
-
-tests/                   Pytest suite (31 tests)
-AGENTS.md                Agent behavioral spec
-```
-
----
 
 ## License
 

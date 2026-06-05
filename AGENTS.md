@@ -2,24 +2,44 @@
 
 This file guides any AI coding agent working on the Poorify project.
 
+## MCP Setup
+
+Poorify exposes its full API via MCP (Model Context Protocol). Add this to your `.opencode/opencode.json` or equivalent:
+
+```json
+{
+  "mcpServers": {
+    "poorify": {
+      "command": "python",
+      "args": ["-m", "poorify.mcp_server"]
+    }
+  }
+}
+```
+
+Once connected, Poorify registers:
+- **Tools** — `init`, `requirements`, `ingestion`, `develop`, `gate`, `inspect`, `metrics`
+- **Resources** — `poorify://agents/` (phase prompt templates), `poorify://summary` (latest metrics)
+- **Prompts** — `requirements_prompt`, `development_prompt`, `gate_prompt` (phase templates)
+
 ## Available Commands
 
-When a human invokes one of these commands, follow the protocol in the referenced file:
+When a human invokes one of these commands:
 
-| Command | Protocol File | Purpose |
-|---------|--------------|---------|
-| `/init` | `commands/init.md` | Initialize the harness database |
-| `/execute <task>` | `commands/execute.md` | Run the full pipeline |
-| `/metrics` | `commands/metrics.md` | View pipeline statistics |
-| `/inspect <module>` | `commands/inspect.md` | Query architecture state for a module |
+| Command | MCP Tool | Purpose |
+|---------|----------|---------|
+| `/init` | `init()` | Initialize the harness database |
+| `/execute <task>` | Run phases in sequence | Full pipeline: requirements → ingestion → develop → gate |
+| `/metrics` | `metrics()` | View pipeline statistics |
+| `/inspect <module>` | `inspect(keyword)` | Understand a module (on-disk files + DB state) |
 
 ## Pipeline Overview
 
-The Poorify pipeline has 4 phases, executed in strict order:
-1. **Requirements** — Parse user request into technical spec + business assertions
-2. **Ingestion** — Route files as SKELETON or FULL based on cyclomatic complexity
-3. **Development** — Search/Replace patching with self-healing loop (max 3 retries)
-4. **Testing Gate** — Git diff analysis + assertion checks + human confirmation
+4 phases, executed in strict order:
+1. **Requirements** — `requirements()` → saves tech spec + assertion
+2. **Ingestion** — `ingestion()` → routes file SKELETON/FULL based on complexity
+3. **Development** — `develop()` → Search/Replace patches, self-healing loop (max 3)
+4. **Testing Gate** — `gate()` → git diff analysis + assertion check
 
 ## Key Invariants (Hard Rules)
 
@@ -27,67 +47,29 @@ The Poorify pipeline has 4 phases, executed in strict order:
 - NO changing public API signatures — function headers, params, exports are frozen
 - NO adding new dependencies — use only what is already imported
 - Patches must be the minimal delta — never rewrite entire files
-- Always run `poorify --init` before first use
-- Use `poorify --phase pipeline` for full end-to-end runs
+- Always run `init()` before first use
 
-## Project Structure
+## Agent Protocol
 
-```
-.poorify/core/       — SQLite database location
-.poorify/agents/     — Prompt modules for each agent role
-.poorify/backup/     — Automatic rollback backups
-src/poorify/         — Python scaffold engine package
-tests/               — Test suite
-```
-
----
-
-## AI Agent Protocol
-
-This section defines how an AI coding agent MUST interact with Poorify. Follow these rules precisely.
-
-### 1. Phase Execution Order
-
-Phases MUST be executed in sequence. Never skip a phase:
+### Phase execution order
 
 ```
 requirements → ingestion → development → gate
 ```
 
-### 2. Agent Prompt Loading
+### Agent prompt loading
 
-Before each phase, load the corresponding system prompt from `.poorify/agents/`:
+Before each phase, read the corresponding prompt from `poorify://agents/`:
 
-| Phase | Prompt File | Purpose |
-|-------|------------|---------|
-| Requirements | `requirements_agent.md` | Decompose user request → XML spec + assertion |
-| Development | `development_agent.md` | Apply Search/Replace patches, self-heal on failure |
-| Testing Gate | `testing_agent.md` | Analyze diff, return XML pass/fail judgment |
+| Phase | Resource | Purpose |
+|-------|----------|---------|
+| Requirements | `poorify://agents/requirements_agent.md` | Decompose user request → XML spec + assertion |
+| Development | `poorify://agents/development_agent.md` | Apply Search/Replace patches, self-heal on failure |
+| Testing Gate | `poorify://agents/testing_agent.md` | Analyze diff, return XML pass/fail judgment |
 
-### 3. CLI Commands
+### Output formats
 
-Use the `poorify` CLI to drive each phase. The protocol for each user-facing command is in `commands/`:
-
-| User Command | Refer to |
-|-------------|----------|
-| `/init` | `commands/init.md` |
-| `/execute <task>` | `commands/execute.md` |
-| `/metrics` | `commands/metrics.md` |
-
-The underlying CLI flags for each phase:
-
-```bash
-poorify <target_file> --phase requirements --pre "..." --post "..." --mock-input '{...}' --mock-output '{...}'
-poorify <target_file> --phase ingestion
-poorify <target_file> --phase develop --requirement "SEARCH/REPLACE blocks" --build-cmd <cmd>
-poorify <target_file> --phase gate
-```
-
-### 4. Output Format Requirements
-
-Each phase has a strict output format that MUST be followed:
-
-**Requirements phase** — return XML blocks:
+**Requirements** — XML blocks:
 ```xml
 <workspace_anchor>
 SUB_PROJECT_ROOT: projects/payment/
@@ -105,7 +87,7 @@ EXPECTED_OUTPUT_JSON: {"discount":15.0}
 </business_assertion_blueprint>
 ```
 
-**Development phase** — return patches as Search/Replace blocks:
+**Development** — Search/Replace blocks:
 ```
 <<<<<<< SEARCH
     let discount = 0;
@@ -114,7 +96,7 @@ EXPECTED_OUTPUT_JSON: {"discount":15.0}
 >>>>>>> REPLACE
 ```
 
-**Testing gate** — return XML judgment:
+**Testing gate** — XML judgment:
 ```xml
 <test_judgment>
 STATUS: PASSED
@@ -122,30 +104,43 @@ SUMMARY: Change is minimal and fulfills the business criteria.
 </test_judgment>
 ```
 
-### 5. Self-Healing Protocol
+### Self-healing
 
 When the development loop fails:
-1. The engine automatically restores the `.bak` file (physical rollback)
-2. Re-read the error from the build command output
-3. Fix the patch and re-apply
-4. Max 3 retries — after that the pipeline aborts
+1. Engine auto-restores `.bak` (physical rollback)
+2. Re-read error from build output
+3. Fix the patch and re-apply via `develop()`
+4. Max 3 retries — hard cap
 
-### 6. SQLite State Access
+### SQLite state
 
-The database at `.poorify/core/harness_state.db` is readable by the agent. Key tables:
+DB at `.poorify/core/harness_state.db`. Key tables:
 
 | Table | Contents |
 |-------|----------|
 | `technical_specs` | Current task's pre/post conditions and constraints |
 | `business_assertions` | Mock input/output JSON for validation |
-| `token_metrics` | Per-phase input/output/cached tokens and timing |
+| `token_metrics` | Per-phase token counts and timing |
 | `migration_router` | Complexity mode (SKELETON/FULL) per file |
-| `cascade_tasks` | Pending cascade repair jobs from compiler failures |
-| `execution_logs` | Short-term log of every action taken |
+| `cascade_tasks` | Pending cascade repair jobs |
+| `execution_logs` | Short-term action log |
 
-### 7. Error Recovery Rules
+### Error recovery
 
-- If a SEARCH block fails to match 100%, the patch is rejected — do NOT guess or fuzzy-match
-- If the build fails, inspect stderr, fix the exact line, and re-apply
-- Never disable the cascade repair — process PENDING tasks one by one
-- Never exceed `MAX_RETRIES = 3` — the hard cap is enforced by the engine
+- SEARCH block must match 100% — no fuzzy matching
+- Build fails → inspect stderr, fix exact line, re-apply
+- Never disable cascade repair — process PENDING tasks one by one
+- Never exceed `MAX_RETRIES = 3`
+
+## CLI (Debugging Only)
+
+For manual testing, the CLI at `python -m src.poorify.main` is available:
+
+```bash
+python -m src.poorify.main --init
+python -m src.poorify.main --inspect "keyword"
+python -m src.poorify.main --metrics latest
+python -m src.poorify.main --metrics-all
+```
+
+See `commands/` for the original protocol files (kept as reference).

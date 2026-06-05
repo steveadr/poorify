@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "poorify": {
+      "command": "python",
+      "args": ["-m", "poorify.mcp_server"]
+    }
+  }
+}

@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Caveman Harness Scaffold — Anti-RAG, Flat-SQLite, JIT Surgical Discovery Engine"
 requires-python = ">=3.10"
 license = {text = "MIT"}
+dependencies = ["mcp>=1.27.0"]
 
 [project.scripts]
 poorify = "poorify.main:main"
+poorify-mcp = "poorify.mcp_server:main"
